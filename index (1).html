@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#090514">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>BUZZR AI — AI Trivia Buzzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-180.png">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at top, #1e1b4b 0%, #090514 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            min-height: 100dvh;
+            overscroll-behavior: none;
+            padding-bottom: env(safe-area-inset-bottom);
+            touch-action: manipulation;
+        }
+        html { overscroll-behavior: none; }
+        #qrBox svg { width: 180px; height: 180px; display: block; }
+        .glow-text {
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.6), 0 0 40px rgba(245, 158, 11, 0.4);
+        }
+        .glow-box {
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.3);
+        }
+        .buzzer-3d {
+            box-shadow: 0 12px 0 #7f1d1d, 0 20px 45px rgba(239, 68, 68, 0.65), inset 0 4px 12px rgba(255, 255, 255, 0.45);
+            transition: transform 0.06s ease, box-shadow 0.06s ease;
+        }
+        .buzzer-3d:active:not(:disabled) {
+            transform: translateY(8px);
+            box-shadow: 0 4px 0 #7f1d1d, 0 10px 20px rgba(239, 68, 68, 0.6);
+        }
+        @keyframes pulse-fast {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes trophy-pop {
+            0% { transform: scale(0.75); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-trophy {
+            animation: trophy-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col justify-between selection:bg-amber-500 selection:text-black">
+
+    <!-- Header / Navbar -->
+    <header class="w-full py-4 px-6 border-b border-indigo-900/60 bg-indigo-950/40 backdrop-blur-md flex justify-between items-center z-50">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-indigo-950 font-black text-xl shadow-lg shadow-amber-500/30">
+                ⚡
+            </div>
+            <div>
+                <h1 class="font-black text-xl tracking-wider bg-gradient-to-r from-amber-400 via-yellow-200 to-amber-500 bg-clip-text text-transparent">
+                    TRIVIA BUZZER AI
+                </h1>
+                <p class="text-xs text-indigo-300 font-medium tracking-wide">TV SHOW GAME ARENA</p>
+            </div>
+        </div>
+        <div id="connectionStatus" class="flex items-center space-x-2 bg-indigo-900/60 px-3 py-1.5 rounded-full border border-indigo-700/50 text-xs font-semibold text-indigo-200">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span id="statusText">Connecting...</span>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow flex items-center justify-center p-4 sm:p-6 w-full max-w-4xl mx-auto">
+
+        <!-- VIEW 1: WELCOME & SETUP -->
+        <div id="viewWelcome" class="w-full max-w-md bg-indigo-900/30 backdrop-blur-xl border border-indigo-700/40 rounded-3xl p-6 sm:p-8 glow-box shadow-2xl space-y-6">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl font-black text-white tracking-wide">Ready to Play?</h2>
+                <p class="text-sm text-indigo-300">Enter your name and choose your game role.</p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1.5">Your Name / Team Name</label>
+                    <input type="text" id="inputName" placeholder="e.g. Trivia Master Mike or Team Rocket" maxlength="25"
+                        class="w-full px-4 py-3 bg-indigo-950/80 border border-indigo-700/60 rounded-xl text-white placeholder-indigo-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 transition-all font-semibold">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1.5">Select Role</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button" id="rolePlayer" onclick="setRole('player')"
+                            class="py-3 px-4 rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-bold text-sm flex flex-col items-center justify-center transition-all">
+                            <span class="text-xl mb-1">🎮</span> Player (Buzzer)
+                        </button>
+                        <button type="button" id="roleMaster" onclick="setRole('master')"
+                            class="py-3 px-4 rounded-xl border-2 border-indigo-700 bg-indigo-950/40 text-indigo-400 font-bold text-sm flex flex-col items-center justify-center transition-all">
+                            <span class="text-xl mb-1">🎙️</span> Trivia Master
+                        </button>
+                    </div>
+                </div>
+
+                <div id="roomCodeSection" class="pt-2 space-y-4 border-t border-indigo-800/50">
+                    <div id="joinCodeWrapper">
+                        <label class="block text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1.5">Room Code</label>
+                        <input type="text" id="inputRoomCode" placeholder="e.g. SHOW123" maxlength="10"
+                            class="w-full px-4 py-3 bg-indigo-950/80 border border-indigo-700/60 rounded-xl text-white uppercase placeholder-indigo-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 transition-all font-mono font-bold tracking-widest">
+                    </div>
+
+                    <button onclick="joinOrCreateRoom()" id="btnAction"
+                        class="w-full py-4 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-indigo-950 font-black rounded-xl shadow-lg shadow-amber-500/30 transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                        JOIN ROOM
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: GAME ROOM (LOBBY & ACTIVE BUZZER) -->
+        <div id="viewGame" class="hidden w-full max-w-3xl flex flex-col items-center space-y-6">
+            
+            <!-- Room Info Bar -->
+            <div class="w-full bg-indigo-950/70 border border-indigo-800/60 rounded-2xl p-4 flex flex-wrap justify-between items-center gap-4 backdrop-blur-md">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-amber-500/20 text-amber-400 font-mono font-black px-3 py-1.5 rounded-lg border border-amber-500/40 text-sm" id="displayRoomCode">
+                        ROOM: ----
+                    </div>
+                    <div>
+                        <span class="text-xs text-indigo-400 block font-semibold">LOGGED IN AS</span>
+                        <span class="text-sm font-bold text-white" id="displayUserName">---</span>
+                        <span class="text-xs px-2 py-0.5 bg-indigo-800 rounded-full text-indigo-200 ml-1 font-semibold" id="displayUserRole">---</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="leaveRoom()" class="px-3 py-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold rounded-xl transition-all">
+                        Leave Room
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Game Area -->
+            <div class="w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- Left/Main Column: Buzzer & Winner State -->
+                <div class="md:col-span-2 bg-indigo-900/30 backdrop-blur-xl border border-indigo-700/40 rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center min-h-[380px] text-center relative overflow-hidden glow-box">
+                    
+                    <!-- Status Banner inside game -->
+                    <div id="gameStateBanner" class="mb-6 px-4 py-2 rounded-full font-black text-sm tracking-wider uppercase border bg-indigo-950/80 border-indigo-700 text-indigo-300">
+                        Waiting for Trivia Master to open buzzer...
+                    </div>
+
+                    <div id="questionCard" dir="auto" class="hidden w-full mb-4 px-4 py-3 rounded-2xl bg-indigo-950/80 border border-amber-400/40 text-lg sm:text-xl font-bold text-white"></div>
+                    <div id="timerDisplay" class="text-6xl font-black text-amber-300 glow-text h-16 mb-2"></div>
+
+                    <!-- WINNER DISPLAY CONTAINER -->
+                    <div id="winnerDisplayContainer" class="hidden flex flex-col items-center justify-center space-y-3 my-auto">
+                        <div class="text-6xl sm:text-7xl">⚡</div>
+                        <h3 class="text-2xl sm:text-4xl font-black text-amber-400 glow-text" id="winnerNameText">PLAYER NAME</h3>
+                        <p class="text-indigo-200 font-semibold text-sm">IS ANSWERING</p>
+                    </div>
+
+                    <!-- GIANT BUZZER BUTTON (For Players) -->
+                    <div id="playerBuzzerWrapper" class="hidden flex flex-col items-center justify-center my-auto w-full">
+                        <button id="giantBuzzerBtn" onpointerdown="pressBuzzer()" disabled
+                            class="w-52 h-52 sm:w-64 sm:h-64 rounded-full bg-gradient-to-b from-rose-500 via-red-600 to-red-800 border-8 border-rose-400/50 text-white font-black text-3xl sm:text-4xl tracking-widest buzzer-3d cursor-not-allowed opacity-45 flex flex-col items-center justify-center select-none">
+                            <span class="text-5xl mb-1">🚨</span>
+                            BUZZ!
+                        </button>
+                        <p class="text-xs text-indigo-300 font-semibold mt-6" id="buzzerInstruction">Waiting for buzzer activation...</p>
+                    </div>
+
+                    <!-- TRIVIA MASTER CONTROL PANEL -->
+                    <div id="masterControlWrapper" class="hidden flex flex-col items-center justify-center my-auto w-full space-y-5">
+                        <div class="w-full flex gap-2 items-center">
+                            <button onclick="toggleInvite()" class="flex-1 py-2.5 bg-indigo-500/30 border border-indigo-500/50 text-indigo-100 font-black rounded-xl text-xs uppercase">📲 Invite players</button>
+                            <select id="timerSelect" class="px-3 py-2.5 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs font-bold">
+                                <option value="0">⏱ No timer</option><option value="10">10s</option><option value="15" selected>15s</option><option value="20">20s</option><option value="30">30s</option>
+                            </select>
+                        </div>
+                        <div id="invitePanel" class="hidden w-full bg-indigo-950/70 border border-indigo-700/60 rounded-2xl p-4 flex flex-col items-center space-y-3">
+                            <div id="qrBox" class="bg-white p-1 rounded-xl"></div>
+                            <p id="inviteLink" class="text-[11px] font-mono text-indigo-300 break-all"></p>
+                            <button onclick="shareInvite()" class="w-full py-2.5 bg-amber-500 text-indigo-950 font-black rounded-xl text-sm">Share / Copy link</button>
+                        </div>
+                        <div id="hostAnswer" dir="auto" class="hidden w-full bg-emerald-500/10 border border-emerald-500/40 rounded-2xl p-3 text-left text-sm font-bold text-emerald-200"></div>
+                        <button onclick="toggleAI()" class="w-full py-2.5 bg-fuchsia-500/20 border border-fuchsia-500/50 text-fuchsia-100 font-black rounded-xl text-xs uppercase">🤖 AI questions</button>
+                        <div id="aiPanel" class="hidden w-full bg-indigo-950/70 border border-indigo-700/60 rounded-2xl p-4 text-left space-y-2">
+                            <input id="aiKey" type="password" autocomplete="off" placeholder="Your Gemini API key (stays on this phone)" class="w-full px-3 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs">
+                            <input id="aiTopic" type="text" maxlength="80" placeholder="Topic, e.g. Algeria history" class="w-full px-3 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs">
+                            <div class="grid grid-cols-3 gap-2">
+                                <select id="aiCount" class="px-2 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs"><option>5</option><option selected>10</option><option>15</option></select>
+                                <select id="aiDiff" class="px-2 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
+                                <select id="aiLang" class="px-2 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs"><option value="English">English</option><option value="French">Français</option><option value="Arabic">العربية</option></select>
+                            </div>
+                            <button id="aiBtn" onclick="generateAI()" class="w-full py-2.5 bg-fuchsia-500 text-white font-black rounded-xl text-sm">✨ Generate &amp; load</button>
+                            <textarea id="aiPaste" rows="3" placeholder="Or paste questions, one per line: question | answer" class="w-full px-3 py-2 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-xs"></textarea>
+                            <button onclick="importPasted()" class="w-full py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs">📋 Load pasted questions</button>
+                            <p id="aiStatus" class="text-[11px] text-indigo-300"></p>
+                            <p class="text-[11px] text-indigo-400">Free key: aistudio.google.com → Get API key.</p>
+                        </div>
+                        <button id="btnWrong" onclick="masterWrong()" class="hidden w-full py-3 bg-rose-500 hover:bg-rose-400 text-white font-black rounded-2xl text-sm active:scale-95">❌ WRONG — PASS IT ON</button>
+                        <button onclick="masterCloseRoom()" class="text-[11px] text-rose-300/80 underline">🗑 Close &amp; delete room</button>
+                        <div class="w-full grid grid-cols-2 gap-3 sm:gap-4">
+                            <button onclick="masterOpenBuzzer()" class="py-4 px-4 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-indigo-950 font-black rounded-2xl shadow-lg shadow-green-500/30 transition-all text-sm sm:text-base active:scale-95">
+                                🟢 OPEN BUZZER
+                            </button>
+                            <button onclick="masterNextRound()" class="py-4 px-4 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-indigo-950 font-black rounded-2xl shadow-lg shadow-amber-500/30 transition-all text-sm sm:text-base active:scale-95">
+                                ⏭️ NEXT ROUND
+                            </button>
+                        </div>
+
+                        <!-- Award Round Points Box -->
+                        <div class="w-full bg-indigo-950/70 border border-indigo-700/60 rounded-2xl p-4 text-left space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-black uppercase tracking-wider text-amber-300">🏅 Award Round Points</span>
+                                <span id="roundNumberBadge" class="text-xs font-bold bg-indigo-800 text-indigo-200 px-2.5 py-0.5 rounded-full">Round 1</span>
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <select id="awardPlayerSelect" class="flex-grow px-3 py-2.5 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-sm font-bold focus:outline-none focus:border-amber-400">
+                                    <option value="">No players yet...</option>
+                                </select>
+                                <input type="number" id="awardPointsInput" value="1" min="-10" max="100"
+                                    class="w-full sm:w-20 px-3 py-2.5 bg-indigo-900/90 border border-indigo-600 rounded-xl text-white text-sm font-bold text-center focus:outline-none focus:border-amber-400">
+                                <button onclick="masterAwardPoints()" class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-black rounded-xl text-sm transition-all active:scale-95">
+                                    ➕ Award
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Finish Game Button -->
+                        <button onclick="masterFinishGame()" class="w-full py-3 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-200 font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all">
+                            🏆 Finish All Rounds & Crown Winner
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- Right Column: Live Scoreboard & Buzz Queue -->
+                <div class="bg-indigo-900/30 backdrop-blur-xl border border-indigo-700/40 rounded-3xl p-6 flex flex-col justify-between space-y-4">
+                    <div>
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="font-black text-sm uppercase tracking-wider text-amber-300">🏆 Scoreboard</h3>
+                            <span id="playerCountBadge" class="bg-indigo-800 text-indigo-200 text-xs font-bold px-2.5 py-1 rounded-full">0</span>
+                        </div>
+                        <div id="playersListContainer" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+                            <p class="text-xs text-indigo-400 italic">No players connected yet...</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-indigo-800/50">
+                        <h3 class="font-black text-sm uppercase tracking-wider text-indigo-200 mb-3">⚡ Buzz Order</h3>
+                        <div id="buzzQueueContainer" class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                            <p class="text-xs text-indigo-400 italic">Queue is empty for this round.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- VIEW 3: GAME OVER / GRAND CHAMPION TROPHY SCREEN -->
+        <div id="viewGameOver" class="hidden w-full max-w-lg bg-indigo-900/35 backdrop-blur-xl border border-indigo-700/50 rounded-3xl p-6 sm:p-8 glow-box text-center space-y-6">
+            
+            <!-- Exclusive Trophy Card (Shown ONLY on Champion's Phone/PC) -->
+            <div id="exclusiveTrophyCard" class="hidden bg-gradient-to-br from-yellow-300 via-amber-400 to-amber-600 text-indigo-950 rounded-3xl p-6 sm:p-8 shadow-2xl border-4 border-yellow-100 animate-trophy space-y-2">
+                <div class="text-7xl sm:text-8xl drop-shadow-md">🏆</div>
+                <h2 class="text-2xl sm:text-4xl font-black uppercase tracking-wider">Trivia Champion!</h2>
+                <p id="trophySubtitle" class="font-bold text-base sm:text-lg text-indigo-950/90">You won the showdown!</p>
+            </div>
+
+            <!-- Banner for everyone else -->
+            <div id="nonWinnerBanner" class="hidden space-y-2">
+                <div class="text-5xl">🎉</div>
+                <h2 id="finalWinnerAnnouncement" class="text-2xl sm:text-3xl font-black text-amber-400 glow-text">GAME OVER!</h2>
+                <p class="text-sm text-indigo-300 font-semibold">Final Standings</p>
+            </div>
+
+            <div id="finalStandingsContainer" class="space-y-2 text-left"></div>
+
+            <div id="masterNewGameWrapper" class="hidden pt-2">
+                <button onclick="masterStartNewGame()" class="w-full py-4 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-indigo-950 font-black rounded-2xl shadow-lg shadow-amber-500/30 transition-all">
+                    🔄 START NEW GAME
+                </button>
+            </div>
+            <p id="playerWaitingNewGame" class="hidden text-xs text-indigo-300 italic">Waiting for the Trivia Master to start a new game...</p>
+        </div>
+
+    </main>
+
+    <!-- Custom Modal for Notifications / Alerts -->
+    <div id="customModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-indigo-950 border border-indigo-700 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 glow-box">
+            <div id="modalIcon" class="text-4xl">⚠️</div>
+            <h3 id="modalTitle" class="text-xl font-bold text-white">Notice</h3>
+            <p id="modalMessage" class="text-sm text-indigo-300">Message goes here...</p>
+            <button onclick="closeModal()" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="w-full py-4 px-6 text-center text-xs text-indigo-400 border-t border-indigo-900/40 bg-indigo-950/20">
+        Buzzr AI &bull; AI-powered trivia buzzer
+    </footer>
+
+    <!-- Firebase & App Logic Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp, increment, runTransaction, deleteField, arrayUnion, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // PASTE YOUR OWN FIREBASE CONFIG BELOW WHEN HOSTING ON GITHUB PAGES
+        // =========================================================================
+        const manualFirebaseConfig = {
+            apiKey: "PASTE_YOUR_API_KEY",
+            authDomain: "PASTE_YOUR_AUTH_DOMAIN",
+            projectId: "PASTE_YOUR_PROJECT_ID",
+            storageBucket: "PASTE_YOUR_STORAGE_BUCKET",
+            messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID",
+            appId: "PASTE_YOUR_APP_ID"
+        };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'buzzr-ai-github';
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : (manualFirebaseConfig.apiKey !== "PASTE_YOUR_API_KEY" ? manualFirebaseConfig : null);
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
+
+        let app, db, auth;
+        const roomDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+        let currentUser = null;
+        let currentRole = 'player';
+        let currentRoomId = null;
+        let currentDisplayName = '';
+        let unsubscribeRoom = null;
+        let audioCtx = null;
+        let hasCelebrated = false;
+
+        // Initialize Web Audio API on first user interaction
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Sound Effect: Buzzer Sound (Classic TV buzzer)
+        function playBuzzerSound() {
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(80, audioCtx.currentTime + 0.3);
+                
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {
+                console.log("Audio play error:", e);
+            }
+        }
+
+        // Sound Effect: Win / Success Sound (Upbeat chime)
+        function playWinSound() {
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + i * 0.08);
+                    
+                    gain.gain.setValueAtTime(0.2, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.3);
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.3);
+                });
+            } catch (e) {
+                console.log("Audio play error:", e);
+            }
+        }
+
+        // Sound Effect: Reset / Open Sound
+        function playResetSound() {
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.2);
+                
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+            } catch (e) {
+                console.log("Audio play error:", e);
+            }
+        }
+
+        // Initialize Firebase & Auth
+        async function initFirebase() {
+            try {
+                if (firebaseConfig) {
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+
+                    onAuthStateChanged(auth, (user) => {
+                        if (user) {
+                            currentUser = user;
+                            document.getElementById('statusText').innerText = 'Connected Live';
+                            document.getElementById('connectionStatus').querySelector('span').classList.remove('bg-amber-400', 'animate-ping');
+                            document.getElementById('connectionStatus').querySelector('span').classList.add('bg-emerald-400');
+
+                            // Auto-rejoin if URL has saved session parameters (Refresh-proof!)
+                            const params = new URLSearchParams(window.location.search);
+                            const savedName = params.get('name');
+                            const savedRole = params.get('role');
+                            const savedRoom = params.get('room');
+                            if (savedName && savedRole && savedRoom && !currentRoomId) {
+                                document.getElementById('inputName').value = savedName;
+                                setRole(savedRole === 'master' ? 'master' : 'player');
+                                document.getElementById('inputRoomCode').value = savedRoom;
+                                joinOrCreateRoom(true);
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('statusText').innerText = 'Offline Mock Mode';
+                }
+            } catch (err) {
+                console.error("Firebase init error:", err);
+                document.getElementById('statusText').innerText = 'Connection Error';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initFirebase();
+            
+            // Random room code generator for quick join
+            const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            const q = new URLSearchParams(location.search).get('room');
+            document.getElementById('inputRoomCode').value = q ? q.toUpperCase().slice(0, 10) : randomCode;
+        });
+
+        // UI Role Selection Toggle
+        window.setRole = function(role) {
+            currentRole = role;
+            const btnPlayer = document.getElementById('rolePlayer');
+            const btnMaster = document.getElementById('roleMaster');
+            const joinCodeWrapper = document.getElementById('joinCodeWrapper');
+            const btnAction = document.getElementById('btnAction');
+
+            if (role === 'player') {
+                btnPlayer.className = "py-3 px-4 rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-bold text-sm flex flex-col items-center justify-center transition-all";
+                btnMaster.className = "py-3 px-4 rounded-xl border-2 border-indigo-700 bg-indigo-950/40 text-indigo-400 font-bold text-sm flex flex-col items-center justify-center transition-all";
+                joinCodeWrapper.style.display = 'block';
+                btnAction.innerText = "JOIN ROOM";
+            } else {
+                btnMaster.className = "py-3 px-4 rounded-xl border-2 border-amber-400 bg-amber-500/20 text-amber-300 font-bold text-sm flex flex-col items-center justify-center transition-all";
+                btnPlayer.className = "py-3 px-4 rounded-xl border-2 border-indigo-700 bg-indigo-950/40 text-indigo-400 font-bold text-sm flex flex-col items-center justify-center transition-all";
+                joinCodeWrapper.style.display = 'block';
+                btnAction.innerText = "CREATE / HOST ROOM";
+            }
+        };
+
+        // Custom Modal helper (replacing alert())
+        function showModal(title, message, icon = '⚠️') {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            document.getElementById('modalIcon').innerText = icon;
+            document.getElementById('customModal').classList.remove('hidden');
+            document.getElementById('customModal').classList.add('flex');
+        }
+
+        window.closeModal = function() {
+            document.getElementById('customModal').classList.remove('flex');
+            document.getElementById('customModal').classList.add('hidden');
+        };
+
+        // Join or Create Room
+        window.joinOrCreateRoom = async function(isAutoRejoin = false) {
+            if (!isAutoRejoin) initAudio();
+            const nameInput = document.getElementById('inputName').value.trim();
+            const roomCode = document.getElementById('inputRoomCode').value.trim().toUpperCase();
+
+            if (!nameInput) {
+                showModal('Name Required', 'Please enter your name or team name to continue.');
+                return;
+            }
+            if (!roomCode) {
+                showModal('Room Code Required', 'Please enter a valid room code.');
+                return;
+            }
+            if (!db) {
+                showModal('Setup Needed', 'Please paste your Firebase config keys in index.html first!');
+                return;
+            }
+            if (!currentUser) {
+                showModal('Connecting...', 'Still establishing secure connection. Please try again in a moment.');
+                return;
+            }
+
+            currentRoomId = roomCode;
+            currentDisplayName = nameInput;
+
+            // Save session to URL so refreshing browser keeps user logged in
+            const url = new URL(window.location);
+            url.searchParams.set('name', nameInput);
+            url.searchParams.set('role', currentRole);
+            url.searchParams.set('room', roomCode);
+            window.history.replaceState({}, '', url);
+
+            const roomRef = roomDoc();
+            
+            try {
+                const roomSnap = await getDoc(roomRef);
+                const userId = currentUser.uid;
+                const room = roomSnap.exists() ? roomSnap.data() : null;
+                if (room && (room.kicked || []).includes(userId)) {
+                    currentRoomId = null;
+                    window.history.replaceState({}, '', window.location.pathname);
+                    showModal('Removed', 'The Trivia Master removed you from this room.', '🚪');
+                    return;
+                }
+
+                if (!room && currentRole !== 'master') {
+                    currentRoomId = null;
+                    window.history.replaceState({}, '', window.location.pathname);
+                    showModal('Room Not Found', 'Check the room code with your Trivia Master.');
+                    return;
+                }
+                if (room && currentRole === 'master' && room.hostId !== userId) {
+                    currentRoomId = null;
+                    window.history.replaceState({}, '', window.location.pathname);
+                    showModal('Room Taken', 'This room already has a Trivia Master.');
+                    return;
+                }
+
+                if (!room) {
+                    await setDoc(roomRef, {
+                        roomId: currentRoomId, hostId: userId, status: 'waiting', roundNum: 1,
+                        winner: null, buzzQueue: [], createdAt: serverTimestamp(),
+                        players: { [userId]: { userId, name: nameInput, role: currentRole, score: 0, joinedAt: Date.now() } }
+                    });
+                } else if (room.players && room.players[userId]) {
+                    await updateDoc(roomRef, { [`players.${userId}.name`]: nameInput, [`players.${userId}.role`]: currentRole });
+                } else {
+                    await updateDoc(roomRef, { [`players.${userId}`]: { userId, name: nameInput, role: currentRole, score: 0, joinedAt: Date.now() } });
+                }
+
+                if (currentRole === 'master') { cleanupOldRooms(userId); loadQs(); }
+                keepAwake();
+
+                // Switch UI views
+                document.getElementById('viewWelcome').classList.add('hidden');
+                document.getElementById('viewGame').classList.remove('hidden');
+
+                document.getElementById('displayRoomCode').innerText = `ROOM: ${currentRoomId}`;
+                document.getElementById('displayUserName').innerText = nameInput;
+                document.getElementById('displayUserRole').innerText = currentRole === 'master' ? 'Trivia Master' : 'Player';
+
+                if (currentRole === 'master') {
+                    document.getElementById('masterControlWrapper').classList.remove('hidden');
+                    document.getElementById('playerBuzzerWrapper').classList.add('hidden');
+                } else {
+                    document.getElementById('playerBuzzerWrapper').classList.remove('hidden');
+                    document.getElementById('masterControlWrapper').classList.add('hidden');
+                }
+
+                subscribeToRoom(roomRef);
+
+            } catch (err) {
+                console.error("Error joining/creating room:", err);
+                showModal('Error', 'Failed to connect to room. Check your Firebase Firestore rules.');
+            }
+        };
+
+        // Real-time Room Listener
+        function subscribeToRoom(roomRef) {
+            if (unsubscribeRoom) unsubscribeRoom();
+
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                if (!docSnap.exists()) {
+                    if (currentRoomId) { leaveRoom(true); showModal('Room Closed', 'The Trivia Master closed this room.', '👋'); }
+                    return;
+                }
+                const data = docSnap.data();
+                updateGameUI(data);
+            }, (error) => {
+                console.error("Room snapshot error:", error);
+            });
+        }
+
+        // Update UI based on Firestore Room State
+        function updateGameUICore(data) {
+            const status = data.status; // 'waiting', 'active', 'locked', 'gameover'
+            const winner = data.winner;
+            const players = Object.values(data.players || {});
+            const buzzQueue = data.buzzQueue || [];
+            const roundNum = data.roundNum || 1;
+
+            document.getElementById('roundNumberBadge').innerText = `Round ${roundNum}`;
+
+            // Handle Game Over Podium & Exclusive Champion Trophy
+            if (status === 'gameover') {
+                document.getElementById('viewGame').classList.add('hidden');
+                document.getElementById('viewGameOver').classList.remove('hidden');
+
+                const gamePlayers = players.filter(p => p.role !== 'master').sort((a, b) => (b.score || 0) - (a.score || 0));
+                const topScore = gamePlayers.length > 0 ? (gamePlayers[0].score || 0) : 0;
+                const champions = gamePlayers.filter(p => (p.score || 0) === topScore && topScore > 0);
+                const amIChampion = currentUser && champions.some(c => c.userId === currentUser.uid);
+
+                if (amIChampion) {
+                    document.getElementById('exclusiveTrophyCard').classList.remove('hidden');
+                    document.getElementById('nonWinnerBanner').classList.add('hidden');
+                    document.getElementById('trophySubtitle').innerText = `Congratulations, ${currentDisplayName}! Victory with ${topScore} points!`;
+                    if (!hasCelebrated && typeof confetti === 'function') {
+                        hasCelebrated = true;
+                        playWinSound();
+                        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                    }
+                } else {
+                    document.getElementById('exclusiveTrophyCard').classList.add('hidden');
+                    document.getElementById('nonWinnerBanner').classList.remove('hidden');
+                    if (champions.length > 0) {
+                        const champNames = champions.map(c => c.name).join(' & ');
+                        document.getElementById('finalWinnerAnnouncement').innerText = `🏆 CHAMPION: ${champNames.toUpperCase()} (${topScore} PTS)`;
+                    } else {
+                        document.getElementById('finalWinnerAnnouncement').innerText = `🏁 GAME OVER!`;
+                    }
+                }
+
+                document.getElementById('finalStandingsContainer').innerHTML = gamePlayers.map((p, idx) => {
+                    const medal = idx === 0 && (p.score || 0) > 0 ? '🥇' : idx === 1 && (p.score || 0) > 0 ? '🥈' : idx === 2 && (p.score || 0) > 0 ? '🥉' : `#${idx + 1}`;
+                    return `
+                        <div class="flex items-center justify-between bg-indigo-950/80 px-4 py-3 rounded-xl border ${idx === 0 && (p.score || 0) > 0 ? 'border-amber-400' : 'border-indigo-800'}">
+                            <span class="font-bold text-white">${medal} ${escapeHtml(p.name)}</span>
+                            <span class="font-mono font-black text-amber-300">${p.score || 0} pts</span>
+                        </div>
+                    `;
+                }).join('');
+
+                if (currentRole === 'master') {
+                    document.getElementById('masterNewGameWrapper').classList.remove('hidden');
+                    document.getElementById('playerWaitingNewGame').classList.add('hidden');
+                } else {
+                    document.getElementById('masterNewGameWrapper').classList.add('hidden');
+                    document.getElementById('playerWaitingNewGame').classList.remove('hidden');
+                }
+                return;
+            } else {
+                hasCelebrated = false;
+                document.getElementById('viewGameOver').classList.add('hidden');
+                document.getElementById('viewGame').classList.remove('hidden');
+            }
+
+            // Sort players by score for Live Scoreboard
+            const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
+            document.getElementById('playerCountBadge').innerText = players.length;
+            const playersListContainer = document.getElementById('playersListContainer');
+
+            if (sortedPlayers.length === 0) {
+                playersListContainer.innerHTML = `<p class="text-xs text-indigo-400 italic">No players connected yet...</p>`;
+            } else {
+                playersListContainer.innerHTML = sortedPlayers.map(p => `
+                    <div class="flex items-center justify-between bg-indigo-950/60 px-3 py-2 rounded-xl border border-indigo-800/40 text-xs">
+                        <span class="font-bold text-white flex items-center space-x-1.5">
+                            <span>${p.role === 'master' ? '🎙️' : '🎮'}</span>
+                            <span>${escapeHtml(p.name)}</span>
+                        </span>
+                        <span class="font-mono text-xs px-2.5 py-0.5 rounded-full ${p.role === 'master' ? 'bg-amber-500/20 text-amber-300 font-bold' : 'bg-indigo-800 text-amber-300 font-black'}">
+                            ${p.role === 'master' ? 'Host' : `${p.score || 0} pts`}${currentRole === 'master' && p.role !== 'master' ? ` <button onclick="kickPlayer('${escapeHtml(p.userId)}')" class="ml-1 text-rose-300">✕</button>` : ''}
+                        </span>
+                    </div>
+                `).join('');
+            }
+
+            // Update Master's Award Points Dropdown (auto-prioritize whoever buzzed first)
+            if (currentRole === 'master') {
+                const selectEl = document.getElementById('awardPlayerSelect');
+                const nonMasters = players.filter(p => p.role !== 'master');
+                const buzzedIds = buzzQueue.map(b => b.userId);
+                const orderedForSelect = [
+                    ...buzzedIds.map(id => nonMasters.find(p => p.userId === id)).filter(Boolean),
+                    ...nonMasters.filter(p => !buzzedIds.includes(p.userId))
+                ];
+                const prevVal = selectEl.value;
+                selectEl.innerHTML = orderedForSelect.length
+                    ? orderedForSelect.map(p => `<option value="${p.userId}">${escapeHtml(p.name)} (${p.score || 0} pts)</option>`).join('')
+                    : `<option value="">Waiting for players...</option>`;
+                if (prevVal && orderedForSelect.some(p => p.userId === prevVal) && buzzQueue.length === 0) {
+                    selectEl.value = prevVal;
+                }
+            }
+
+            // Update Buzz Queue with millisecond reaction differences
+            const queueContainer = document.getElementById('buzzQueueContainer');
+            if (buzzQueue.length === 0) {
+                queueContainer.innerHTML = `<p class="text-xs text-indigo-400 italic">Queue is empty for Round ${roundNum}.</p>`;
+            } else {
+                const firstTs = buzzQueue[0].timestamp;
+                queueContainer.innerHTML = buzzQueue.map((item, idx) => {
+                    const diffSec = ((item.timestamp - firstTs) / 1000).toFixed(3);
+                    const timeBadge = idx === 0 ? 'ANSWERING' : idx === 1 ? 'NEXT' : 'IN LINE';
+                    return `
+                        <div class="flex items-center justify-between bg-indigo-950/80 px-3 py-2 rounded-xl border ${idx === 0 ? 'border-amber-400/80 bg-amber-500/10' : 'border-indigo-800/40'} text-xs">
+                            <span class="font-black ${idx === 0 ? 'text-amber-400' : 'text-indigo-200'}">#${idx + 1} ${escapeHtml(item.name)}</span>
+                            <span class="text-[11px] font-mono font-bold text-indigo-300">${timeBadge}</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const banner = document.getElementById('gameStateBanner');
+            const winnerContainer = document.getElementById('winnerDisplayContainer');
+            const buzzerBtn = document.getElementById('giantBuzzerBtn');
+            const buzzerInstruction = document.getElementById('buzzerInstruction');
+
+            if (status === 'waiting') {
+                banner.innerText = `ROUND ${roundNum} • Waiting for Trivia Master...`;
+                banner.className = "mb-6 px-4 py-2 rounded-full font-black text-xs sm:text-sm tracking-wider uppercase border bg-indigo-950/80 border-indigo-700 text-indigo-300";
+                winnerContainer.classList.add('hidden');
+                
+                if (currentRole === 'player') {
+                    buzzerBtn.disabled = true;
+                    buzzerBtn.classList.add('opacity-45', 'cursor-not-allowed');
+                    buzzerBtn.classList.remove('animate-pulse-fast');
+                    buzzerInstruction.innerText = "Waiting for Trivia Master to open buzzer...";
+                }
+            } else if (status === 'active') {
+                banner.innerText = `⚡ ROUND ${roundNum} LIVE — PUSH NOW! ⚡`;
+                banner.className = "mb-6 px-4 py-2 rounded-full font-black text-xs sm:text-sm tracking-wider uppercase border bg-emerald-500/20 border-emerald-500/60 text-emerald-300 animate-pulse";
+                winnerContainer.classList.add('hidden');
+
+                if (currentRole === 'player') {
+                    buzzerBtn.disabled = false;
+                    buzzerBtn.classList.remove('opacity-45', 'cursor-not-allowed');
+                    buzzerBtn.classList.add('animate-pulse-fast');
+                    buzzerInstruction.innerText = "TAP FAST TO WIN THE BUZZ!";
+                }
+            } else if (status === 'locked') {
+                banner.innerText = "🔒 BUZZER LOCKED — WINNER FOUND!";
+                banner.className = "mb-6 px-4 py-2 rounded-full font-black text-xs sm:text-sm tracking-wider uppercase border bg-rose-500/20 border-rose-500/60 text-rose-300";
+                
+                if (winner) {
+                    winnerContainer.classList.remove('hidden');
+                    document.getElementById('winnerNameText').innerText = winner.name;
+                }
+
+                if (currentRole === 'player') {
+                    buzzerBtn.disabled = true;
+                    buzzerBtn.classList.add('opacity-45', 'cursor-not-allowed');
+                    buzzerBtn.classList.remove('animate-pulse-fast');
+                    buzzerInstruction.innerText = winner && winner.userId === (currentUser ? currentUser.uid : '') ? "🎉 YOU GOT IT FIRST!" : `🔒 Locked out! ${winner ? winner.name : 'Someone'} was faster.`;
+                }
+            }
+        }
+
+        // ===== Round phases: 3-2-1 countdown + optional answer timer (host's phone drives state) =====
+        let tickInt = null, hostTimeout = null, lastKey = '', wakeLock = null;
+
+        function hostAdvance(from, patch) {
+            return runTransaction(db, async (tx) => {
+                const snap = await tx.get(roomDoc());
+                if (snap.exists() && snap.data().status === from) tx.update(roomDoc(), patch);
+            }).catch(() => {});
+        }
+
+        function runPhase(data) {
+            const key = [data.status, data.roundNum, (data.missed || []).length, data.opened || 0].join('|');
+            if (key === lastKey) return;
+            lastKey = key;
+            clearInterval(tickInt); clearTimeout(hostTimeout);
+            const el = document.getElementById('timerDisplay');
+            el.innerText = '';
+            const run = (n, fmt) => {
+                el.innerText = fmt(n);
+                tickInt = setInterval(() => { n--; el.innerText = n > 0 ? fmt(n) : ''; if (n <= 0) clearInterval(tickInt); }, 1000);
+            };
+            if (data.status === 'countdown') {
+                run(3, n => n);
+                if (currentRole === 'master') hostTimeout = setTimeout(() => hostAdvance('countdown', { status: 'active' }), 3000);
+            } else if (data.status === 'active' && data.timerSecs > 0) {
+                run(data.timerSecs, n => '⏱ ' + n);
+                if (currentRole === 'master') hostTimeout = setTimeout(() => hostAdvance('active', { status: 'timeup' }), data.timerSecs * 1000);
+            }
+        }
+
+        // Wrapper around the original renderer: adds countdown / time-up / pass-it-on / kicked handling
+        function updateGameUI(data) {
+            const me = currentUser ? currentUser.uid : '';
+            if ((data.kicked || []).includes(me)) {
+                leaveRoom(true);
+                showModal('Removed', 'The Trivia Master removed you from this room.', '🚪');
+                return;
+            }
+            updateGameUICore(data);
+            if (data.status === 'gameover') { clearInterval(tickInt); clearTimeout(hostTimeout); lastKey = ''; return; }
+            runPhase(data);
+
+            const st = data.status;
+            const qc = document.getElementById('questionCard');
+            if (data.question) {
+                qc.classList.remove('hidden');
+                qc.textContent = st === 'waiting' ? `❓ Question ${data.question.n}/${data.question.total} — get ready...` : data.question.text;
+            } else qc.classList.add('hidden');
+            const btn = document.getElementById('giantBuzzerBtn');
+            const hint = document.getElementById('buzzerInstruction');
+            const lockBtn = () => { btn.disabled = true; btn.classList.add('opacity-45', 'cursor-not-allowed'); btn.classList.remove('animate-pulse-fast'); };
+            if (st === 'countdown' || st === 'timeup') {
+                document.getElementById('gameStateBanner').innerText = st === 'countdown' ? `ROUND ${data.roundNum || 1} • GET READY...` : "⏰ TIME'S UP!";
+                document.getElementById('winnerDisplayContainer').classList.add('hidden');
+                if (currentRole === 'player') { lockBtn(); hint.innerText = st === 'countdown' ? 'Get ready...' : 'Nobody buzzed in time.'; }
+            }
+            if (st === 'active' && currentRole === 'player' && (data.missed || []).includes(me)) {
+                lockBtn();
+                hint.innerText = '❌ You missed this one — others get a shot';
+            }
+            if (st === 'locked' && data.winner) {
+                document.getElementById('gameStateBanner').innerText = `🎙️ ${data.winner.name.toUpperCase()} IS ANSWERING`;
+                if (currentRole === 'player') {
+                    const pos = (data.buzzQueue || []).findIndex(x => x.userId === me);
+                    if (pos === 0) { lockBtn(); hint.innerText = "🎉 YOU'RE ANSWERING!"; }
+                    else if (pos > 0) { lockBtn(); hint.innerText = pos === 1 ? "✅ You're next in line!" : `✅ You're #${pos} in line`; }
+                    else if ((data.missed || []).includes(me)) { lockBtn(); hint.innerText = '❌ You missed this one'; }
+                    else { btn.disabled = false; btn.classList.remove('opacity-45', 'cursor-not-allowed'); btn.classList.add('animate-pulse-fast'); hint.innerText = 'TAP TO JOIN THE LINE'; }
+                }
+            }
+            const wrongBtn = document.getElementById('btnWrong');
+            const nextUp = (data.buzzQueue || []).find(x => !data.winner || x.userId !== data.winner.userId);
+            wrongBtn.textContent = nextUp ? `❌ WRONG — NEXT: ${nextUp.name}` : '❌ WRONG — REOPEN BUZZER';
+            wrongBtn.classList.toggle('hidden', !(currentRole === 'master' && st === 'locked' && data.winner));
+        }
+
+        // Host: wrong answer -> next buzzer in line answers; if nobody is left, reopen for players who haven't missed
+        window.masterWrong = async function() {
+            if (currentRole !== 'master') return;
+            const ref = roomDoc();
+            await runTransaction(db, async (tx) => {
+                const d = (await tx.get(ref)).data();
+                if (!d || d.status !== 'locked' || !d.winner) return;
+                const rest = (d.buzzQueue || []).filter(x => x.userId !== d.winner.userId);
+                if (rest.length) tx.update(ref, { winner: rest[0], buzzQueue: rest, missed: arrayUnion(d.winner.userId) });
+                else tx.update(ref, { status: 'active', winner: null, buzzQueue: [], missed: arrayUnion(d.winner.userId) });
+            });
+        };
+
+        // Host housekeeping
+        window.kickPlayer = async function(uid) {
+            if (currentRole !== 'master' || !confirm('Remove this player from the room?')) return;
+            await updateDoc(roomDoc(), { [`players.${uid}`]: deleteField(), kicked: arrayUnion(uid) });
+        };
+        window.masterCloseRoom = async function() {
+            if (currentRole !== 'master' || !confirm('Close and delete this room for everyone?')) return;
+            await deleteDoc(roomDoc());
+        };
+        async function cleanupOldRooms(uid) {   // deletes this host's own rooms older than 24h
+            try {
+                const snap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', 'rooms'), where('hostId', '==', uid)));
+                const cutoff = Date.now() - 24 * 3600 * 1000;
+                snap.forEach(d => { const t = d.data().createdAt; if (d.id !== currentRoomId && t && t.toMillis() < cutoff) deleteDoc(d.ref); });
+            } catch (e) { console.log('Room cleanup skipped', e); }
+        }
+
+        // Invite link + QR
+        const inviteUrl = () => location.origin + location.pathname + '?room=' + encodeURIComponent(currentRoomId);
+        window.toggleInvite = function() {
+            const panel = document.getElementById('invitePanel');
+            panel.classList.toggle('hidden');
+            if (panel.classList.contains('hidden')) return;
+            const qr = qrcode(0, 'M'); qr.addData(inviteUrl()); qr.make();
+            document.getElementById('qrBox').innerHTML = qr.createSvgTag(5);
+            document.getElementById('inviteLink').innerText = inviteUrl();
+        };
+        window.shareInvite = async function() {
+            const url = inviteUrl();
+            try {
+                if (navigator.share) await navigator.share({ title: 'Join my trivia game', url });
+                else { await navigator.clipboard.writeText(url); showModal('Link Copied', url, '📋'); }
+            } catch (e) {}
+        };
+
+        // Phone polish: keep screen awake, offline indicator, installable PWA
+        async function keepAwake() {
+            try { if ('wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+        }
+        document.addEventListener('visibilitychange', () => { if (currentRoomId) keepAwake(); });
+        function setNet(online) {
+            document.getElementById('statusText').innerText = online ? 'Connected Live' : 'Offline — reconnecting…';
+            const dot = document.querySelector('#connectionStatus span');
+            dot.classList.toggle('bg-emerald-400', online);
+            dot.classList.toggle('bg-amber-400', !online);
+            dot.classList.toggle('animate-ping', !online);
+        }
+        window.addEventListener('offline', () => setNet(false));
+        window.addEventListener('online', () => { if (currentUser) setNet(true); });
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+        // ===== Questions (answers stay on the host's phone) + AI generation =====
+        let hostQs = [], qIdx = -1;
+        const qsKey = () => `buzzr_ai_qs_${currentRoomId}`;
+        function saveQs() { try { localStorage.setItem(qsKey(), JSON.stringify({ hostQs, qIdx })); } catch (e) {} }
+        function loadQs() {
+            hostQs = []; qIdx = -1;
+            try {
+                const saved = JSON.parse(localStorage.getItem(qsKey()) || 'null');
+                if (saved) { hostQs = saved.hostQs || []; qIdx = saved.qIdx ?? -1; }
+                const k = localStorage.getItem('buzzr_gemini_key');
+                if (k) document.getElementById('aiKey').value = k;
+            } catch (e) {}
+            renderHostAnswer();
+        }
+        function renderHostAnswer() {
+            const el = document.getElementById('hostAnswer');
+            if (!hostQs.length) { el.classList.add('hidden'); return; }
+            el.classList.remove('hidden');
+            const q = hostQs[qIdx];
+            el.textContent = q ? `✅ Answer (Q${qIdx + 1}/${hostQs.length}): ${q.a}` : 'No more questions — load more or finish the game.';
+        }
+        function nextQuestionPatch(first) {      // advances the host's pointer, returns the public part for the room doc
+            if (!hostQs.length) return {};
+            qIdx = first ? 0 : qIdx + 1;
+            saveQs(); renderHostAnswer();
+            const q = hostQs[qIdx];
+            return { question: q ? { text: q.q, n: qIdx + 1, total: hostQs.length } : null };
+        }
+        async function loadQuestions(list) {
+            hostQs = list;
+            await updateDoc(roomDoc(), nextQuestionPatch(true));
+        }
+        function parseQs(text) {
+            const t = text.replace(/```json|```/g, '').trim();
+            let arr = null;
+            try { arr = JSON.parse(t); } catch (e) {}
+            if (Array.isArray(arr)) return arr.map(x => ({ q: String(x.q || x.question || '').trim(), a: String(x.a || x.answer || '').trim() })).filter(x => x.q && x.a);
+            return t.split('\n').map(l => l.split('|')).filter(p => p.length >= 2).map(p => ({ q: p[0].trim(), a: p.slice(1).join('|').trim() })).filter(x => x.q && x.a);
+        }
+        window.toggleAI = () => document.getElementById('aiPanel').classList.toggle('hidden');
+        window.importPasted = async function() {
+            if (currentRole !== 'master') return;
+            const qs = parseQs(document.getElementById('aiPaste').value);
+            const status = document.getElementById('aiStatus');
+            if (!qs.length) { status.textContent = 'Use one line per question: question | answer'; return; }
+            await loadQuestions(qs);
+            status.textContent = `✅ ${qs.length} questions loaded. Question 1 is live.`;
+        };
+        window.generateAI = async function() {
+            if (currentRole !== 'master') return;
+            const key = document.getElementById('aiKey').value.trim();
+            const topic = document.getElementById('aiTopic').value.trim();
+            const status = document.getElementById('aiStatus');
+            const btn = document.getElementById('aiBtn');
+            if (!key || !topic) { status.textContent = 'Enter your Gemini key and a topic.'; return; }
+            try { localStorage.setItem('buzzr_gemini_key', key); } catch (e) {}
+            const n = document.getElementById('aiCount').value;
+            const diff = document.getElementById('aiDiff').value;
+            const lang = document.getElementById('aiLang').value;
+            const prompt = `Write ${n} ${diff} trivia questions about "${topic}" in ${lang}. Each answer must be short (1-5 words) and unambiguous. Return ONLY a JSON array like [{"q":"question","a":"answer"}].`;
+            btn.disabled = true;
+            status.textContent = '⏳ Generating...';
+            try {
+                let text = '';
+                for (const model of ['gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json' } })
+                    });
+                    if (res.status === 404) continue;   // model not offered -> try the next one
+                    if (res.status === 429) throw new Error('Free limit reached — wait a minute and try again.');
+                    if (res.status === 400 || res.status === 403) throw new Error('Gemini rejected the request — check your key.');
+                    if (!res.ok) throw new Error('Gemini error ' + res.status);
+                    const data = await res.json();
+                    text = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || []).map(p => p.text || '').join('');
+                    break;
+                }
+                const qs = parseQs(text);
+                if (!qs.length) throw new Error('No questions came back — try again.');
+                await loadQuestions(qs);
+                status.textContent = `✅ ${qs.length} questions loaded. Question 1 is live.`;
+            } catch (e) {
+                status.textContent = '❌ ' + (e.name === 'TypeError' ? 'Could not reach Gemini — check your internet or region.' : e.message);
+            }
+            btn.disabled = false;
+        };
+
+        // Player Presses Buzzer (local feedback first, then an atomic claim on the server)
+        window.pressBuzzer = async function() {
+            if (!currentRoomId || currentRole !== 'player') return;
+            initAudio();
+            playBuzzerSound();
+            if (navigator.vibrate) navigator.vibrate(80);
+
+            const userId = currentUser.uid;
+            const name = currentDisplayName;
+            const roomRef = roomDoc();
+
+            try {
+                const won = await runTransaction(db, async (tx) => {
+                    const snap = await tx.get(roomRef);
+                    if (!snap.exists()) return false;
+                    const d = snap.data();
+                    const q = d.buzzQueue || [];
+                    if (!['active', 'locked'].includes(d.status) || (d.missed || []).includes(userId) || q.some(x => x.userId === userId)) return false;
+                    if (d.status === 'active') {
+                        tx.update(roomRef, { status: 'locked', winner: { userId, name }, buzzQueue: [{ userId, name }] });
+                        return 'first';
+                    }
+                    tx.update(roomRef, { buzzQueue: [...q, { userId, name }] });
+                    return 'queued';
+                });
+                if (won === 'first') playWinSound();
+            } catch (err) {
+                console.error("Error pressing buzzer:", err);
+            }
+        };
+
+        // Trivia Master Controls: Open Buzzer
+        window.masterOpenBuzzer = async function() {
+            if (!currentRoomId || currentRole !== 'master') return;
+            initAudio();
+            playResetSound();
+
+            const roomRef = roomDoc();
+            await updateDoc(roomRef, {
+                status: 'countdown',
+                missed: [],
+                opened: Date.now(),
+                timerSecs: parseInt(document.getElementById('timerSelect').value, 10) || 0,
+                winner: null,
+                buzzQueue: []
+            });
+        };
+
+        // Trivia Master Controls: Next Round
+        window.masterNextRound = async function() {
+            if (!currentRoomId || currentRole !== 'master') return;
+            initAudio();
+            playResetSound();
+
+            const roomRef = roomDoc();
+            const snap = await getDoc(roomRef);
+            const currentRound = snap.exists() ? (snap.data().roundNum || 1) : 1;
+
+            await updateDoc(roomRef, {
+                status: 'waiting',
+                roundNum: currentRound + 1,
+                ...nextQuestionPatch(false),
+                missed: [],
+                winner: null,
+                buzzQueue: []
+            });
+        };
+
+        // Trivia Master Controls: Award Points
+        window.masterAwardPoints = async function() {
+            if (!currentRoomId || currentRole !== 'master') return;
+            const targetUserId = document.getElementById('awardPlayerSelect').value;
+            const pts = parseInt(document.getElementById('awardPointsInput').value, 10) || 0;
+            if (!targetUserId) return;
+            playWinSound();
+            await updateDoc(roomDoc(), { [`players.${targetUserId}.score`]: increment(pts) });
+        };
+
+        // Trivia Master Controls: Finish All Rounds
+        window.masterFinishGame = async function() {
+            if (!currentRoomId || currentRole !== 'master') return;
+            if (!confirm('End the game and crown the winner for everyone?')) return;
+            const roomRef = roomDoc();
+            await updateDoc(roomRef, { status: 'gameover' });
+        };
+
+        // Trivia Master Controls: Start New Game
+        window.masterStartNewGame = async function() {
+            if (!currentRoomId || currentRole !== 'master') return;
+            const roomRef = roomDoc();
+            const snap = await getDoc(roomRef);
+            const upd = { status: 'waiting', roundNum: 1, winner: null, buzzQueue: [], missed: [] };
+            Object.assign(upd, nextQuestionPatch(true));
+            Object.keys((snap.exists() && snap.data().players) || {}).forEach(id => { upd[`players.${id}.score`] = 0; });
+            await updateDoc(roomRef, upd);
+        };
+
+        // Leave Room
+        window.leaveRoom = async function(silent = false) {
+            if (!silent && currentRole === 'player' && currentRoomId && currentUser) {
+                try { await updateDoc(roomDoc(), { [`players.${currentUser.uid}`]: deleteField() }); } catch (e) {}
+            }
+            clearInterval(tickInt); clearTimeout(hostTimeout); lastKey = '';
+            if (unsubscribeRoom) unsubscribeRoom();
+            currentRoomId = null;
+            const url = new URL(window.location);
+            url.search = '';
+            window.history.replaceState({}, '', url);
+            document.getElementById('viewGame').classList.add('hidden');
+            document.getElementById('viewGameOver').classList.add('hidden');
+            document.getElementById('viewWelcome').classList.remove('hidden');
+        };
+
+        // Utility helpers
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+        }
+    </script>
+</body>
+</html>

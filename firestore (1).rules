@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /artifacts/{appId}/public/data/rooms/{roomId} {
+
+      function signedIn() { return request.auth != null; }
+      function isHost() { return signedIn() && resource.data.hostId == request.auth.uid; }
+      function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+      function notKicked() { return !(request.auth.uid in resource.data.get('kicked', [])); }
+
+      // A player may only add, rename or remove their own entry (never set a score or the host role)
+      function ownEntryOnly() {
+        let uid = request.auth.uid;
+        let before = resource.data.players;
+        let after = request.resource.data.players;
+        return notKicked()
+          && changed().hasOnly(['players'])
+          && after.diff(before).affectedKeys().hasOnly([uid])
+          && (!(uid in after)
+              || (after[uid].role == 'player'
+                  && after[uid].score == (uid in before ? before[uid].score : 0)));
+      }
+
+      // The first buzz of an open round, from a player who has not already missed it
+      function firstBuzz() {
+        return notKicked()
+          && resource.data.status == 'active'
+          && !(request.auth.uid in resource.data.get('missed', []))
+          && changed().hasOnly(['status', 'winner', 'buzzQueue'])
+          && request.resource.data.status == 'locked'
+          && request.resource.data.winner.userId == request.auth.uid;
+      }
+
+      // A later buzz while someone is answering: append yourself to the line (once, never if you already missed)
+      function queuedBuzz() {
+        let q = request.resource.data.buzzQueue;
+        return notKicked()
+          && resource.data.status == 'locked'
+          && !(request.auth.uid in resource.data.get('missed', []))
+          && changed().hasOnly(['buzzQueue'])
+          && q.size() == resource.data.buzzQueue.size() + 1
+          && q[q.size() - 1].userId == request.auth.uid;
+      }
+
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.hostId == request.auth.uid;  // hosts can list only their own rooms (cleanup)
+      allow create: if signedIn() && request.resource.data.hostId == request.auth.uid;
+      allow update: if isHost() || (signedIn() && (ownEntryOnly() || firstBuzz() || queuedBuzz()));
+      allow delete: if isHost();
+    }
+  }
+}
