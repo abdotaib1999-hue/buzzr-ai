@@ -317,18 +317,12 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, serverTimestamp, increment, runTransaction, deleteField, arrayUnion, deleteDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { manualFirebaseConfig } from "./firebase-config.js";
 
         // =========================================================================
         // PASTE YOUR OWN FIREBASE CONFIG BELOW WHEN HOSTING ON GITHUB PAGES
         // =========================================================================
-        const manualFirebaseConfig = {
-            apiKey: "AIzaSyANxR-ALIaVpJxIwNDiZpycvlmB1GJoZJ4",
-            authDomain: "buzzr-ai.firebaseapp.com",
-            projectId: "buzzr-ai",
-            storageBucket: "buzzr-ai.firebasestorage.app",
-            messagingSenderId: "1079443908371",
-            appId: "1:1079443908371:web:facd4f7a65e732bc371ce6"
-        };
+        // Firebase config now lives in firebase-config.js (paste your keys there once)
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'buzzr-ai-github';
         const firebaseConfig = typeof __firebase_config !== 'undefined'
@@ -967,6 +961,7 @@
             const t = text.replace(/```json|```/g, '').trim();
             let arr = null;
             try { arr = JSON.parse(t); } catch (e) {}
+            if (arr && !Array.isArray(arr)) arr = Object.values(arr).find(Array.isArray) || null;
             if (Array.isArray(arr)) return arr.map(x => ({ q: String(x.q || x.question || '').trim(), a: String(x.a || x.answer || '').trim() })).filter(x => x.q && x.a);
             return t.split('\n').map(l => l.split('|')).filter(p => p.length >= 2).map(p => ({ q: p[0].trim(), a: p.slice(1).join('|').trim() })).filter(x => x.q && x.a);
         }
@@ -979,6 +974,17 @@
             await loadQuestions(qs);
             status.textContent = `✅ ${qs.length} questions loaded. Question 1 is live.`;
         };
+        async function geminiModels(key) {   // models this key can use, best first
+            try {
+                const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
+                if (!res.ok) return [];
+                const names = ((await res.json()).models || [])
+                    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /flash/.test(m.name) && !/image|tts|live|audio|embedding|robotics|computer|native|thinking/.test(m.name))
+                    .map(m => m.name.replace('models/', ''));
+                const rank = n => (/preview|exp/.test(n) ? 2 : 0) + (/lite/.test(n) ? 1 : 0);
+                return names.sort((a, b) => rank(a) - rank(b));
+            } catch (e) { return []; }
+        }
         window.generateAI = async function() {
             if (currentRole !== 'master') return;
             const key = document.getElementById('aiKey').value.trim();
@@ -990,27 +996,34 @@
             const n = document.getElementById('aiCount').value;
             const diff = document.getElementById('aiDiff').value;
             const lang = document.getElementById('aiLang').value;
-            const prompt = `Write ${n} ${diff} trivia questions about "${topic}" in ${lang}. Each answer must be short (1-5 words) and unambiguous. Return ONLY a JSON array like [{"q":"question","a":"answer"}].`;
+            const prompt = `Write ${n} ${diff} trivia questions in ${lang}. Topic or request from the host: "${topic}". Each answer must be short (1-5 words) and unambiguous. Return ONLY a JSON array like [{"q":"question","a":"answer"}].`;
             btn.disabled = true;
             status.textContent = '⏳ Generating...';
+            const tried = [];
             try {
-                let text = '';
-                for (const model of ['gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
+                const candidates = [...new Set(['gemini-flash-latest', ...(await geminiModels(key)).slice(0, 4)])];
+                let qs = [];
+                for (const model of candidates) {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
                         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json' } })
                     });
-                    if (res.status === 404) continue;   // model not offered -> try the next one
-                    if (res.status === 429) throw new Error('Free limit reached — wait a minute and try again.');
-                    if (res.status === 400 || res.status === 403) throw new Error('Gemini rejected the request — check your key.');
-                    if (!res.ok) throw new Error('Gemini error ' + res.status);
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        const msg = String((err.error && err.error.message) || ('HTTP ' + res.status));
+                        if (/API key not valid|API_KEY_INVALID/i.test(msg) || res.status === 403) throw new Error('Gemini rejected the key — check it in AI Studio.');
+                        if (/location is not supported|free tier is not available/i.test(msg)) throw new Error('Gemini (free tier) is not available in your region.');
+                        tried.push(`${model}: ${msg.slice(0, 70)}`);
+                        continue;
+                    }
                     const data = await res.json();
-                    text = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || []).map(p => p.text || '').join('');
-                    break;
+                    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+                    qs = parseQs(parts.map(p => p.text || '').join(''));
+                    if (qs.length) break;
+                    tried.push(`${model}: unreadable reply`);
                 }
-                const qs = parseQs(text);
-                if (!qs.length) throw new Error('No questions came back — try again.');
+                if (!qs.length) throw new Error('No questions came back. ' + tried.slice(0, 3).join(' | '));
                 await loadQuestions(qs);
                 status.textContent = `✅ ${qs.length} questions loaded. Question 1 is live.`;
             } catch (e) {
