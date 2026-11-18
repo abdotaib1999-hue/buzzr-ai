@@ -174,6 +174,7 @@
                             BUZZ!
                         </button>
                         <p class="text-xs text-indigo-300 font-semibold mt-6" id="buzzerInstruction">Waiting for buzzer activation...</p>
+                        <p id="pingInfo" class="text-[11px] text-indigo-400 mt-1"></p>
                     </div>
 
                     <!-- TRIVIA MASTER CONTROL PANEL -->
@@ -786,7 +787,7 @@
         }
 
         // ===== Round phases: 3-2-1 countdown + optional answer timer (host's phone drives state) =====
-        let tickInt = null, hostTimeout = null, lastKey = '', wakeLock = null;
+        let tickInt = null, hostTimeout = null, lastKey = '', wakeLock = null, lastRoom = null;
 
         function hostAdvance(from, patch) {
             return runTransaction(db, async (tx) => {
@@ -817,6 +818,7 @@
 
         // Wrapper around the original renderer: adds countdown / time-up / pass-it-on / kicked handling
         function updateGameUI(data) {
+            lastRoom = data;
             const me = currentUser ? currentUser.uid : '';
             if ((data.kicked || []).includes(me)) {
                 leaveRoom(true);
@@ -1038,25 +1040,26 @@
             initAudio();
             playBuzzerSound();
             if (navigator.vibrate) navigator.vibrate(80);
+            const t0 = performance.now();
 
             const userId = currentUser.uid;
             const name = currentDisplayName;
             const roomRef = roomDoc();
 
             try {
-                const won = await runTransaction(db, async (tx) => {
-                    const snap = await tx.get(roomRef);
-                    if (!snap.exists()) return false;
-                    const d = snap.data();
-                    const q = d.buzzQueue || [];
-                    if (!['active', 'locked'].includes(d.status) || (d.missed || []).includes(userId) || q.some(x => x.userId === userId)) return false;
-                    if (d.status === 'active') {
-                        tx.update(roomRef, { status: 'locked', winner: { userId, name }, buzzQueue: [{ userId, name }] });
-                        return 'first';
-                    }
-                    tx.update(roomRef, { buzzQueue: [...q, { userId, name }] });
-                    return 'queued';
-                });
+                const entry = { userId, name };
+                let won = false;
+                if (!lastRoom || lastRoom.status !== 'locked') {
+                    try {                       // accepted by the rules only while the round is still 'active'
+                        await updateDoc(roomRef, { status: 'locked', winner: entry, buzzQueue: [entry] });
+                        won = 'first';
+                    } catch (e) { if (e.code !== 'permission-denied') throw e; }
+                }
+                if (!won) {                     // someone was faster: join the line instead
+                    try { await updateDoc(roomRef, { buzzQueue: arrayUnion(entry) }); }
+                    catch (e) { if (e.code !== 'permission-denied') throw e; }
+                }
+                document.getElementById('pingInfo').textContent = `⚡ server confirmed in ${Math.round(performance.now() - t0)} ms`;
                 if (won === 'first') playWinSound();
             } catch (err) {
                 console.error("Error pressing buzzer:", err);
